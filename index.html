@@ -42,8 +42,10 @@ You will receive an image containing multiple-choice questions. For each questio
 <button onclick="copyPrompt()">Copy Prompt</button>
 
 <div style="margin-top:10px;">
-<button onclick="chooseFile()">Select CSV File</button>
-<button onclick="loadFile()">Load Existing CSV</button>
+<!-- File input (hidden) -->
+<input type="file" id="fileInput" accept=".csv" style="display:none" onchange="handleFileSelect(event)">
+<button onclick="triggerFileSelect()">Select CSV File</button>
+<button onclick="loadFile()">Load CSV</button>
 <button onclick="deselectFile()">Deselect File</button>
 <button class="download" onclick="newCSV()">New CSV</button>
 <button class="undo" onclick="undo()">Undo</button>
@@ -74,7 +76,7 @@ You will receive an image containing multiple-choice questions. For each questio
 </table>
 
 <script>
-// Register PWA service worker
+// Register service worker for PWA
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js')
     .then(() => console.log("Service Worker registered"))
@@ -100,17 +102,22 @@ function copyPrompt() {
   alert("Prompt copied!");
 }
 
-// Choose file
-async function chooseFile() {
-  try {
-    [fileHandle] = await window.showOpenFilePicker({
-      types: [{ description: 'CSV File', accept: { 'text/csv': ['.csv'] } }]
-    });
-    document.getElementById('fileName').textContent = fileHandle.name;
-  } catch { console.log("Canceled file select"); }
+// --- File input handling ---
+function triggerFileSelect() { document.getElementById('fileInput').click(); }
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  fileHandle = file;
+  document.getElementById('fileName').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    dataList = parseCSV(e.target.result);
+    renderTable();
+    alert("File loaded!");
+  }
+  reader.readAsText(file);
 }
 
-// Deselect file
 function deselectFile() {
   fileHandle = null;
   dataList = [];
@@ -120,14 +127,16 @@ function deselectFile() {
   alert("File deselected and cleared.");
 }
 
-// Load CSV
-async function loadFile() {
-  if (!fileHandle) return alert("Select a file first");
-  const file = await fileHandle.getFile();
-  const text = await file.text();
-  dataList = parseCSV(text);
-  renderTable();
-  alert("File loaded!");
+// Load file button for compatibility
+function loadFile() {
+  if (!fileHandle) return alert("Select a CSV file first");
+  const reader = new FileReader();
+  reader.onload = e => {
+    dataList = parseCSV(e.target.result);
+    renderTable();
+    alert("File loaded!");
+  }
+  reader.readAsText(fileHandle);
 }
 
 // Parse CSV
@@ -138,12 +147,12 @@ function parseCSV(text) {
     if (!line.trim()) continue;
     const row = [];
     let val = "", inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
+    for (let i=0;i<line.length;i++){
       const c = line[i];
-      if (c === '"' && line[i + 1] === '"') { val += '"'; i++; }
+      if (c === '"' && line[i+1] === '"'){ val+='"'; i++; }
       else if (c === '"') inQuotes = !inQuotes;
-      else if (c === ',' && !inQuotes) { row.push(val); val = ""; }
-      else val += c;
+      else if (c === ',' && !inQuotes){ row.push(val); val=""; }
+      else val+=c;
     }
     row.push(val);
     data.push([row[1]||"",row[2]||"",row[3]||"",row[4]||"",row[5]||"",row[6]||"300",row[7]?.replace(/"/g,"")||""]);
@@ -151,16 +160,16 @@ function parseCSV(text) {
   return data;
 }
 
-// New CSV (downloads instantly)
+// New CSV
 function newCSV() {
-  dataList = [];
+  dataList=[];
   renderTable();
   const csv = makeCSV();
   downloadData(csv, "new_blooket.csv");
-  alert("New CSV created — check your downloads!");
+  alert("New CSV created!");
 }
 
-// Download CSV manually
+// Download CSV
 function downloadCSV() {
   const csv = makeCSV();
   downloadData(csv, "blooket_export.csv");
@@ -170,16 +179,15 @@ function downloadCSV() {
 function makeCSV() {
   let csv = "Blooket Import Template,,,,,,,\n";
   csv += "Question #,Question Text,Answer 1,Answer 2,Answer 3 (Optional),Answer 4 (Optional),Time Limit (sec) (Max: 300 seconds),Correct Answer(s)\n";
-  dataList.forEach((row, i) => {
-    const escaped = row.map(f => f ? `"${f.replace(/"/g,'""')}"` : "");
-    csv += `${i+1},${escaped.join(",")}\n`;
+  dataList.forEach((r,i)=>{
+    const escaped = r.map(f=>f?`"${f.replace(/"/g,'""')}"`:"");
+    csv+=`${i+1},${escaped.join(",")}\n`;
   });
   return csv;
 }
 
-// Helper to trigger download
 function downloadData(text, filename) {
-  const blob = new Blob([text], { type: 'text/csv' });
+  const blob = new Blob([text],{type:'text/csv'});
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = filename;
@@ -190,7 +198,7 @@ function downloadData(text, filename) {
 // Validation
 function validateInputs(q,A1,A2,A3,A4,correct){
   correct = correct.replace(/\s/g,'');
-  if (!q||!A1||!A2||!correct) return alert("Fill Question, A1, A2, Correct");
+  if(!q||!A1||!A2||!correct) return alert("Fill Question, A1, A2, Correct");
   const answers=[A1,A2,A3,A4].filter(a=>a);
   if(new Set(answers).size!==answers.length) return alert("Duplicate answers");
   if(!/^[1-4](,[1-4])*$/.test(correct)) return alert("Correct answers must be 1-4");
